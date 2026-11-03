@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sarvio mark: an "S" whose upper end turns into a play arrow. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="-2.5"
+        android:translateY="-4.5">
+        <path
+            android:fillColor="#FFFFFF"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineJoin="round"
+            android:pathData="M57,31 L75,42 L57,53 Z" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="10"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M58,47 C46,47.5 41,52 41.5,57 C42,62 48,63.5 55,65 C63,66.5 68,69.5 68,75 C68,81 61,83.5 54,83.5 C47,83.5 42.5,81 42.5,76.5" />
+    </group>
+</vector>
