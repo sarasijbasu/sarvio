@@ -25,6 +25,9 @@
     <!-- Detect microG RE for "Sign in with microG" in Browse → YouTube -->
     <queries>
         <package android:name="app.revanced.android.gms" />
+        <!-- microG is asked to request the web session as one of these Google apps -->
+        <package android:name="com.android.chrome" />
+        <package android:name="com.google.android.youtube" />
     </queries>
 
     <application

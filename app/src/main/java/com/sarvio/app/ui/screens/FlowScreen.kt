@@ -263,17 +263,18 @@ fun FlowScreen(vm: MainViewModel, onOpenWeb: (String) -> Unit) {
         signingIn = true
         scope.launch {
             val activity = context.findActivity()
-            val url = activity?.let { MicroG.webLoginUrl(it, account) }
-            val ok = url != null && MicroG.applyWebLogin(context, url)
+            val result = activity?.let { MicroG.signIn(it, account) }
+                ?: MicroG.SignInResult(false, "Couldn't reach the screen for microG's approval")
             repo.setFlowAccount(account)
             flow.clearCache()
             signingIn = false
-            if (ok || MicroG.hasYoutubeSession()) {
+            if (result.ok || MicroG.hasYoutubeSession()) {
                 vm.toast("Signed in as $account")
                 flow.refresh()
             } else {
-                vm.toast("microG didn't share a web session. Finish signing in on the Google page.")
-                onOpenWeb(MicroG.WEB_SIGN_IN)
+                // Say why, then let the user finish on Google's page with the email already filled in.
+                vm.toast("microG couldn't sign YouTube in" + (result.detail?.let { ": $it" } ?: "") + ". Finish on the Google page.")
+                onOpenWeb(MicroG.webSignInUrl(account))
             }
         }
     }
