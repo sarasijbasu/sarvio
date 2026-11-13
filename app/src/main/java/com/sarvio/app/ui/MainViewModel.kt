@@ -11,6 +11,7 @@ import com.sarvio.app.engine.Engine
 import com.sarvio.app.engine.Entry
 import com.sarvio.app.engine.MediaInfo
 import com.sarvio.app.engine.VideoOption
+import com.sarvio.app.flow.FlowPlayer
 import com.sarvio.app.util.Cookies
 import com.sarvio.app.util.Links
 import kotlinx.coroutines.Job
@@ -57,6 +58,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _browserUrl = MutableSharedFlow<String>(extraBufferCapacity = 2)
     val browserUrl: SharedFlow<String> = _browserUrl
+
+    /** Browse tab: "flow" = YouTube in the Flow view, "web" = the in-app web browser. */
+    private val _browseMode = MutableStateFlow("flow")
+    val browseMode: StateFlow<String> = _browseMode
 
     private var analyzeJob: Job? = null
     private var searchJob: Job? = null
@@ -122,9 +127,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearHistory() = viewModelScope.launch { sarvio.settings.clearSearchHistory() }
 
+    /** YouTube pages (other than a single video) open in the Flow view; everything else in the web browser. */
     fun openInBrowser(url: String) {
+        if (FlowPlayer.isYoutube(url) && !FlowPlayer.isYoutubeVideo(url)) {
+            _browseMode.value = "flow"
+            _navigate.tryEmit("browser")
+        } else openWeb(url)
+    }
+
+    /** Always uses the web browser (e.g. "Open in web browser" from Flow). */
+    fun openWeb(url: String) {
+        _browseMode.value = "web"
         _browserUrl.tryEmit(url)
         _navigate.tryEmit("browser")
+    }
+
+    fun setBrowseMode(mode: String) { _browseMode.value = mode }
+
+    /** "Watch": YouTube videos stream in the built-in player; other sites open in the browser. */
+    fun watch(url: String) {
+        if (FlowPlayer.isYoutubeVideo(url)) FlowPlayer.play(sarvio, url) else openInBrowser(url)
     }
 
     fun goTo(route: String) { _navigate.tryEmit(route) }

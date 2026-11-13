@@ -25,6 +25,24 @@ data class Entry(
     val durationSec: Long,
     val thumbnail: String?,
     val uploader: String?,
+    val viewCount: Long = 0,
+    val isLive: Boolean = false,
+)
+
+/** Direct stream links for playing a page in the built-in player without downloading it. */
+data class StreamInfo(
+    val pageUrl: String,
+    val title: String,
+    val uploader: String?,
+    val thumbnail: String?,
+    val durationSec: Long,
+    /** Video (or combined) stream; for audio-only playback this is the audio stream. */
+    val mediaUrl: String,
+    /** Separate audio stream to play alongside [mediaUrl], when the site splits them. */
+    val audioUrl: String?,
+    val isHls: Boolean,
+    val userAgent: String?,
+    val audioOnly: Boolean,
 )
 
 data class MediaInfo(

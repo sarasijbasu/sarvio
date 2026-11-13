@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -267,7 +268,7 @@ fun BrowserScreen(holder: BrowserHolder, vm: MainViewModel) {
     var menu by remember { mutableStateOf(false) }
 
     LaunchedEffect(holder.url, editing) { if (!editing) address = holder.url }
-    LaunchedEffect(Unit) { if (holder.url.isEmpty()) holder.load("https://m.youtube.com") }
+    LaunchedEffect(Unit) { if (holder.url.isEmpty()) holder.load("https://www.google.com") }
 
     BackHandler(enabled = holder.canGoBack) { holder.webView.goBack() }
 
@@ -301,6 +302,11 @@ fun BrowserScreen(holder: BrowserHolder, vm: MainViewModel) {
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("YouTube (Flow view)") },
+                                leadingIcon = { Icon(Icons.Filled.SmartDisplay, null) },
+                                onClick = { menu = false; vm.setBrowseMode("flow") }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Forward") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) },

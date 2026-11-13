@@ -143,6 +143,23 @@ fun SettingsScreen(vm: MainViewModel, onOpenVault: () -> Unit, onOpenStatus: () 
 
         item { SectionLabel("Browser & privacy") }
         item { SwitchRow("Block ads in browser", "Blocks common ad and tracker hosts", s.blockAds) { scope.launch { repo.setBlockAds(it) } } }
+        item {
+            SwitchRow(
+                "Sign in with microG (YouTube)",
+                if (s.flowAccount != null && s.flowLogin) "Signed in as ${s.flowAccount}. Shows the account button in Browse → YouTube"
+                else "Shows a sign-in button in Browse → YouTube. Needs the microG RE app",
+                s.flowLogin
+            ) { on ->
+                scope.launch {
+                    repo.setFlowLogin(on)
+                    // Turning it off signs the YouTube section out as well.
+                    if (!on && s.flowAccount != null) {
+                        com.sarvio.app.flow.MicroG.clearYoutubeSession()
+                        repo.setFlowAccount(null)
+                    }
+                }
+            }
+        }
         item { ValueRow("Private folder", if (s.vaultPinHash == null) "Not set up" else "PIN set") { onOpenVault() } }
         if (s.vaultPinHash != null) item {
             SwitchRow("Unlock with fingerprint / face", "Uses your phone's screen lock", s.vaultBiometric) { scope.launch { repo.setVaultBiometric(it) } }

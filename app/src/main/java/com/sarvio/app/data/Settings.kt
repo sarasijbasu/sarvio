@@ -48,6 +48,10 @@ data class AppSettings(
     val backgroundPlay: Boolean = true,
     val autoPip: Boolean = true,
     val blockAds: Boolean = true,
+    /** Shows "Sign in with microG" in the YouTube (Flow) section of Browse. */
+    val flowLogin: Boolean = true,
+    /** Google account signed in through microG RE for the Flow section; null = signed out. */
+    val flowAccount: String? = null,
     val vaultPinHash: String? = null,
     val vaultBiometric: Boolean = false,
     val searchHistory: List<String> = emptyList(),
@@ -79,6 +83,8 @@ class SettingsRepository(private val context: Context) {
         val backgroundPlay = booleanPreferencesKey("background_play")
         val autoPip = booleanPreferencesKey("auto_pip")
         val blockAds = booleanPreferencesKey("block_ads")
+        val flowLogin = booleanPreferencesKey("flow_login")
+        val flowAccount = stringPreferencesKey("flow_account")
         val vaultPin = stringPreferencesKey("vault_pin")
         val vaultBio = booleanPreferencesKey("vault_bio")
         val history = stringSetPreferencesKey("search_history")
@@ -112,6 +118,8 @@ class SettingsRepository(private val context: Context) {
         backgroundPlay = this[K.backgroundPlay] ?: true,
         autoPip = this[K.autoPip] ?: true,
         blockAds = this[K.blockAds] ?: true,
+        flowLogin = this[K.flowLogin] ?: true,
+        flowAccount = this[K.flowAccount],
         vaultPinHash = this[K.vaultPin],
         vaultBiometric = this[K.vaultBio] ?: false,
         // Stored as "timestamp|query" so the newest entries sort first.
@@ -143,6 +151,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBackgroundPlay(v: Boolean) = context.dataStore.edit { it[K.backgroundPlay] = v }
     suspend fun setAutoPip(v: Boolean) = context.dataStore.edit { it[K.autoPip] = v }
     suspend fun setBlockAds(v: Boolean) = context.dataStore.edit { it[K.blockAds] = v }
+    suspend fun setFlowLogin(v: Boolean) = context.dataStore.edit { it[K.flowLogin] = v }
+    suspend fun setFlowAccount(v: String?) = context.dataStore.edit { if (v == null) it.remove(K.flowAccount) else it[K.flowAccount] = v }
     suspend fun setVaultPin(hash: String?) = context.dataStore.edit {
         if (hash == null) it.remove(K.vaultPin) else it[K.vaultPin] = hash
     }
@@ -163,6 +173,7 @@ class SettingsRepository(private val context: Context) {
     private val boolKeys = listOf(
         K.wifiOnly, K.useAria2, K.embedSubs, K.embedThumbnail, K.embedMetadata, K.autoUpdate,
         K.backgroundPlay, K.autoPip, K.blockAds, K.dynamicColor, K.autoPlayNext, K.doubleTapSeek, K.downloadAfterClose,
+        K.flowLogin,
     )
     private val stringKeys = listOf(
         K.storage, K.videoDir, K.audioDir, K.audioFormat, K.audioBitrate, K.subLangs, K.theme,

@@ -22,6 +22,11 @@
         android:maxSdkVersion="29"
         tools:ignore="ScopedStorage" />
 
+    <!-- Detect microG RE for "Sign in with microG" in Browse → YouTube -->
+    <queries>
+        <package android:name="app.revanced.android.gms" />
+    </queries>
+
     <application
         android:name=".SarvioApp"
         android:allowBackup="true"

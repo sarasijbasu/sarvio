@@ -70,6 +70,8 @@ import com.sarvio.app.ui.components.FormatSheet
 import com.sarvio.app.ui.components.MiniPlayer
 import com.sarvio.app.ui.screens.BrowserHolder
 import com.sarvio.app.ui.screens.BrowserScreen
+import com.sarvio.app.ui.screens.FlowScreen
+import com.sarvio.app.flow.FlowPlayer
 import com.sarvio.app.ui.screens.DownloadsScreen
 import com.sarvio.app.ui.screens.HomeScreen
 import com.sarvio.app.ui.screens.LibraryScreen
@@ -203,6 +205,7 @@ private fun AppShell(
         requestedUrl?.let { browser.load(it); route = "browser"; showVault = false; showStatus = false; onUrlHandled() }
     }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { FlowPlayer.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(Unit) { vm.navigate.collect { route = it; showVault = false; showStatus = false } }
     LaunchedEffect(Unit) { vm.browserUrl.collect { browser.load(it) } }
 
@@ -226,7 +229,11 @@ private fun AppShell(
                 VaultScreen(onBack = { showVault = false })
             } else when (route) {
                 "home" -> HomeScreen(vm, onOpenStatus = { showStatus = true })
-                "browser" -> BrowserScreen(browser, vm)
+                "browser" -> {
+                    val mode by vm.browseMode.collectAsState()
+                    if (mode == "flow") FlowScreen(vm, onOpenWeb = { vm.openWeb(it) })
+                    else BrowserScreen(browser, vm)
+                }
                 "downloads" -> DownloadsScreen()
                 "history" -> HistoryScreen(asTab = true, onBack = { route = "home" })
                 "library" -> LibraryScreen(onOpenVault = { showVault = true })

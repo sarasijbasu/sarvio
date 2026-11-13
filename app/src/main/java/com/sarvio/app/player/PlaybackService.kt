@@ -10,6 +10,14 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -86,7 +94,8 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
-            .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .setMediaSourceFactory(StreamSourceFactory(this))
             .build()
         exo = player
         applyAutoNext()
@@ -135,7 +144,10 @@ class PlaybackService : MediaSessionService() {
                         if (item.localConfiguration != null) item
                         else {
                             val uri = item.requestMetadata.mediaUri ?: Uri.parse(item.mediaId)
-                            item.buildUpon().setUri(uri).build()
+                            val hls = item.requestMetadata.extras?.getBoolean(PlayItem.EXTRA_HLS) == true
+                            item.buildUpon().setUri(uri)
+                                .apply { if (hls) setMimeType(MimeTypes.APPLICATION_M3U8) }
+                                .build()
                         }
                     }.toMutableList()
                     return Futures.immediateFuture(resolved)
@@ -183,5 +195,46 @@ class PlaybackService : MediaSessionService() {
         exo = null
         scope.cancel()
         super.onDestroy()
+    }
+}
+
+/**
+ * Builds sources for local files as usual, and for online streams from the Flow screen:
+ * video + separate audio are played together, with the user agent the site expects.
+ */
+@OptIn(UnstableApi::class)
+private class StreamSourceFactory(private val context: android.content.Context) : MediaSource.Factory {
+    private fun dataFactory(ua: String?): DataSource.Factory {
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(20_000)
+            .setReadTimeoutMs(20_000)
+            .apply { if (!ua.isNullOrBlank()) setUserAgent(ua) }
+        return DefaultDataSource.Factory(context, http)
+    }
+
+    private val base = DefaultMediaSourceFactory(dataFactory(null))
+
+    override fun setDrmSessionManagerProvider(
+        drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+    ): MediaSource.Factory = apply { base.setDrmSessionManagerProvider(drmSessionManagerProvider) }
+
+    override fun setLoadErrorHandlingPolicy(
+        loadErrorHandlingPolicy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+    ): MediaSource.Factory = apply { base.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy) }
+
+    override fun getSupportedTypes(): IntArray = base.supportedTypes
+
+    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+        val extras = mediaItem.requestMetadata.extras
+        val audio = extras?.getString(PlayItem.EXTRA_AUDIO_URI)
+        val ua = extras?.getString(PlayItem.EXTRA_UA)
+        if (audio == null && ua == null) return base.createMediaSource(mediaItem)
+        val data = dataFactory(ua)
+        val factory = DefaultMediaSourceFactory(data)
+        val main = factory.createMediaSource(mediaItem)
+        if (audio == null) return main
+        val audioSource = ProgressiveMediaSource.Factory(data).createMediaSource(MediaItem.fromUri(audio))
+        return MergingMediaSource(main, audioSource)
     }
 }

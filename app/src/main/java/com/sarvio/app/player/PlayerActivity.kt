@@ -58,6 +58,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Download
+import androidx.activity.viewModels
+import android.widget.Toast
+import com.sarvio.app.ui.MainViewModel
+import com.sarvio.app.ui.components.FormatSheet
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
@@ -184,6 +189,9 @@ class PlayerActivity : ComponentActivity() {
     private var autoNext by mutableStateOf(true)
     /** Web page the current item came from (downloads only). */
     private var sourceUrl by mutableStateOf<String?>(null)
+    /** Current item is streamed online from Flow: the player shows a Download button. */
+    private var isStream by mutableStateOf(false)
+    private val vm: MainViewModel by viewModels()
     private var sourceFor: String? = null
     /** Chapter markers read from the current file (empty when it has none). */
     private var chapters by mutableStateOf<List<Chapter>>(emptyList())
@@ -515,10 +523,11 @@ class PlayerActivity : ComponentActivity() {
 
     /** Finds the page a file was downloaded from: item extras first, then the downloads table. */
     private fun refreshSource(p: Player) {
-        val item = p.currentMediaItem ?: run { sourceUrl = null; sourceFor = null; return }
+        val item = p.currentMediaItem ?: run { sourceUrl = null; sourceFor = null; isStream = false; return }
         val id = item.mediaId
         if (id == sourceFor) return
         sourceFor = id
+        isStream = item.mediaMetadata.extras?.getBoolean(PlayItem.EXTRA_STREAM) == true
         val fromExtras = item.mediaMetadata.extras?.getString(PlayItem.EXTRA_SOURCE)
         if (!fromExtras.isNullOrBlank()) { sourceUrl = fromExtras; return }
         sourceUrl = null
@@ -664,6 +673,14 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        // Download sheet for streamed items, shown over the player (playback keeps going).
+        val analyze by vm.analyze.collectAsState()
+        val appSettings by vm.settings.collectAsState()
+        FormatSheet(analyze, appSettings, vm)
+        LaunchedEffect(Unit) {
+            vm.messages.collect { Toast.makeText(this@PlayerActivity, it, Toast.LENGTH_SHORT).show() }
+        }
+
         if (showSpeed) SpeedDialog(
             current = speed,
             onPick = { controller?.setPlaybackSpeed(it) },
@@ -750,6 +767,7 @@ class PlayerActivity : ComponentActivity() {
                         "Now playing", color = cs.onSurfaceVariant, style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f)
                     )
+                    if (isStream && sourceUrl != null) DownloadBtn()
                     if (sourceUrl != null) SourceBtn()
                     if (isVideo) AspectBtn()
                 }
@@ -832,6 +850,7 @@ class PlayerActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)
                         )
                         if (chapters.isNotEmpty()) ChaptersBtn()
+                        if (isStream && sourceUrl != null) DownloadBtn()
                         if (sourceUrl != null) SourceBtn()
                         SpeedBtn(); SleepBtn(); AutoNextBtn()
                     }
@@ -1048,6 +1067,9 @@ class PlayerActivity : ComponentActivity() {
     ) { toggleAutoNext() }
 
     @Composable private fun ChaptersBtn() = OptIcon(Icons.AutoMirrored.Filled.FormatListBulleted, "Chapters") { showChapters = true }
+    @Composable private fun DownloadBtn() = OptIcon(Icons.Filled.Download, "Download") {
+        sourceUrl?.let { vm.analyze(it); hint("Getting qualities…") }
+    }
     @Composable private fun SourceBtn() =OptIcon(Icons.Filled.OpenInBrowser, "Open source page") { openSource() }
     @Composable private fun LockBtn() = OptIcon(Icons.Filled.Lock, "Lock controls") { locked = true; controlsVisible = true }
     @Composable private fun AspectBtn() = OptIcon(Icons.Filled.AspectRatio, "Fit / aspect ratio", fit != VideoFit.BEST_FIT) { showFit = true }

@@ -15,6 +15,14 @@ Sarvio is an original, open Android app that offers the full feature set people 
 - Embedded subtitles (English, Hindi, Bengali or all languages)
 - In-app YouTube search with recent-search history
 
+**Browse → YouTube (Flow view)**
+- Clean Material 3 YouTube view inspired by the open-source [Flow](https://github.com/Flow-Tube/Flow) app: feed chips (For you, Music, Gaming, News, Live, Sports …), big video cards, search, pull to refresh
+- "For you" is built on the phone from your recent searches and the channels you stream
+- Videos stream in the built-in player — no download needed; the player shows a **Download** button for streamed videos
+- **Background play**: headphones button on each video plays sound only with the screen off; the top-bar switch keeps any video playing when you leave the app
+- Optional **Sign in with microG** ([microG RE](https://github.com/MorpheApp/MicroG-RE)) for Subscriptions, Recommended and sign-in-only videos. Sarvio never sees your password. Turn the button on or off in **Me → Browser & privacy**
+- Globe button switches to the regular web browser
+
 **In-app browser**
 - Quick tiles for 12 popular video sites
 - Floating **Download** button appears on video pages

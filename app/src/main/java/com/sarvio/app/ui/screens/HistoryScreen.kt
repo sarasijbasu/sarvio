@@ -96,7 +96,10 @@ private fun HistoryRow(h: HistoryEntity, onRemove: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable {
-                scope.launch {
+                if (h.uri.startsWith("http")) {
+                    // Streamed from Flow: links expire, so resolve the page again.
+                    com.sarvio.app.flow.FlowPlayer.play(context, h.uri, audioOnly = !h.isVideo)
+                } else scope.launch {
                     PlayerConnection.play(context, listOf(PlayItem(h.uri, h.title, h.artist, h.isVideo, h.artworkUri)))
                 }
             }

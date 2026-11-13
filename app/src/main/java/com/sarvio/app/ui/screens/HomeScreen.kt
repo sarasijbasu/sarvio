@@ -123,8 +123,6 @@ fun HomeScreen(vm: MainViewModel, onOpenStatus: () -> Unit = {}) {
                         "Sarvio", color = cs.onPrimaryContainer, style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(start = 10.dp)
                     )
-                    Spacer(Modifier.weight(1f))
-                    Text("No ads", color = cs.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
                 Text(
                     "Paste a link from any site, or search YouTube",
@@ -230,7 +228,7 @@ fun HomeScreen(vm: MainViewModel, onOpenStatus: () -> Unit = {}) {
                 search.error != null -> item { EmptyState(Icons.Filled.SearchOff, "Search failed", search.error ?: "") }
                 search.results.isEmpty() -> item { EmptyState(Icons.Filled.SearchOff, "Nothing found", "Try different words.") }
                 else -> items(search.results, key = { it.url }) { e ->
-                    ResultRow(e, onOpen = { vm.openInBrowser(e.url) }, onDownload = { vm.analyze(e.url) })
+                    ResultRow(e, onOpen = { vm.watch(e.url) }, onDownload = { vm.analyze(e.url) })
                 }
             }
         }

@@ -139,6 +139,84 @@ object Engine {
             parseEntries(json.optJSONArray("entries"), "youtube")
         }
 
+    /**
+     * Lists a YouTube feed for the Flow screen: a search (`ytsearchN:words`), a results page URL,
+     * or a signed-in feed such as `:ytrec` (recommended) and `:ytsubs` (subscriptions).
+     */
+    suspend fun feed(context: Context, target: String, cookieFile: String?, limit: Int = 30): List<Entry> =
+        withContext(Dispatchers.IO) {
+            check(awaitReady()) { "Download engine failed to start" }
+            val r = baseRequest(context, target, cookieFile)
+            r.addOption("--dump-single-json")
+            r.addOption("--flat-playlist")
+            r.addOption("--playlist-end", limit.toString())
+            r.addOption("--no-warnings")
+            val response = YoutubeDL.getInstance().execute(r)
+            val json = JSONObject(response.out.trim().lineSequence().last { it.startsWith("{") })
+            parseEntries(json.optJSONArray("entries"), "youtube")
+        }
+
+    /**
+     * Gets direct stream links for one video so the built-in player can play it online.
+     * Video: H.264 up to [maxHeight] plus AAC audio (merged by the player); audio-only: AAC.
+     */
+    suspend fun resolveStream(
+        context: Context,
+        url: String,
+        cookieFile: String?,
+        audioOnly: Boolean,
+        maxHeight: Int = 720,
+    ): StreamInfo = withContext(Dispatchers.IO) {
+        check(awaitReady()) { "Download engine failed to start" }
+        val h = maxHeight.coerceIn(144, 2160)
+        val r = baseRequest(context, url, cookieFile)
+        r.addOption("--dump-single-json")
+        r.addOption("--no-playlist")
+        r.addOption("--no-warnings")
+        r.addOption(
+            "-f",
+            if (audioOnly) "ba[ext=m4a]/ba[acodec^=mp4a]/ba/b"
+            else "bv*[height<=$h][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$h][vcodec^=avc1]+ba/bv*[height<=$h]+ba/b[height<=$h]/b"
+        )
+        val response = YoutubeDL.getInstance().execute(r)
+        val json = JSONObject(response.out.trim().lineSequence().last { it.startsWith("{") })
+
+        var media: String? = null
+        var audio: String? = null
+        var hls = false
+        val requested = json.optJSONArray("requested_formats")
+        if (requested != null && requested.length() > 0) {
+            for (i in 0 until requested.length()) {
+                val f = requested.optJSONObject(i) ?: continue
+                val u = f.optStringOrNull("url") ?: continue
+                val hasVideo = f.optString("vcodec", "none") != "none"
+                if (hasVideo && media == null) {
+                    media = u
+                    hls = f.optString("protocol").contains("m3u8")
+                } else if (!hasVideo && audio == null) audio = u
+            }
+            if (media == null) { media = audio; audio = null }
+        } else {
+            media = json.optStringOrNull("url")
+            hls = json.optString("protocol").contains("m3u8")
+        }
+        checkNotNull(media) { "No playable stream found" }
+
+        val ua = json.optJSONObject("http_headers")?.optStringOrNull("User-Agent")
+        StreamInfo(
+            pageUrl = json.optStringOrNull("webpage_url") ?: url,
+            title = json.optString("title").ifBlank { "Video" },
+            uploader = json.optStringOrNull("uploader") ?: json.optStringOrNull("channel"),
+            thumbnail = json.optStringOrNull("thumbnail") ?: bestThumbnail(json.optJSONArray("thumbnails")),
+            durationSec = json.optDouble("duration", 0.0).toLong(),
+            mediaUrl = media,
+            audioUrl = audio,
+            isHls = hls,
+            userAgent = ua,
+            audioOnly = audioOnly,
+        )
+    }
+
     fun cancel(processId: String): Boolean =
         runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }.getOrDefault(false)
 
@@ -312,6 +390,8 @@ object Engine {
                 durationSec = e.optDouble("duration", 0.0).toLong(),
                 thumbnail = thumb,
                 uploader = e.optStringOrNull("uploader") ?: e.optStringOrNull("channel"),
+                viewCount = e.optLong("view_count", 0L).coerceAtLeast(0L),
+                isLive = e.optString("live_status") == "is_live" || e.optBoolean("is_live", false),
             )
         }
         return out

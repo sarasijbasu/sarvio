@@ -31,9 +31,23 @@ data class PlayItem(
     val artworkUri: String? = null,
     /** Web page the file was downloaded from, shown as "Open source" in the player. */
     val sourceUrl: String? = null,
+    /** Stable id for resume / history. Streams use their page link (stream links expire). */
+    val id: String? = null,
+    /** Separate audio stream played together with [uri] (online video split into two streams). */
+    val audioUri: String? = null,
+    /** Played online from the Flow screen; the player then offers a Download button. */
+    val isStream: Boolean = false,
+    val hls: Boolean = false,
+    val userAgent: String? = null,
 ) {
+    val key: String get() = id ?: uri
+
     companion object {
         const val EXTRA_SOURCE = "sarvio.source"
+        const val EXTRA_STREAM = "sarvio.stream"
+        const val EXTRA_AUDIO_URI = "sarvio.audio_uri"
+        const val EXTRA_HLS = "sarvio.hls"
+        const val EXTRA_UA = "sarvio.ua"
 
         fun fromFile(path: String, title: String, artist: String?, isVideo: Boolean, thumb: String?, source: String? = null) =
             PlayItem(Uri.fromFile(File(path)).toString(), title, artist, isVideo, thumb, source)
@@ -96,13 +110,26 @@ object PlayerConnection {
             .setDisplayTitle(title)
             .setMediaType(if (isVideo) MediaMetadata.MEDIA_TYPE_VIDEO else MediaMetadata.MEDIA_TYPE_MUSIC)
             .apply { artworkUri?.let { setArtworkUri(Uri.parse(it)) } }
-            .apply { sourceUrl?.let { setExtras(android.os.Bundle().apply { putString(PlayItem.EXTRA_SOURCE, it) }) } }
+            .apply {
+                if (sourceUrl != null || isStream) setExtras(android.os.Bundle().apply {
+                    sourceUrl?.let { putString(PlayItem.EXTRA_SOURCE, it) }
+                    if (isStream) putBoolean(PlayItem.EXTRA_STREAM, true)
+                })
+            }
             .build()
+        // Stream details travel in the request extras so PlaybackService can build the source.
+        val req = MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(uri))
+        if (audioUri != null || hls || userAgent != null) req.setExtras(android.os.Bundle().apply {
+            audioUri?.let { putString(PlayItem.EXTRA_AUDIO_URI, it) }
+            if (hls) putBoolean(PlayItem.EXTRA_HLS, true)
+            userAgent?.let { putString(PlayItem.EXTRA_UA, it) }
+        })
         return MediaItem.Builder()
-            .setMediaId(uri)
+            .setMediaId(key)
             .setUri(uri)
+            .apply { if (hls) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
             .setMediaMetadata(meta)
-            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(uri)).build())
+            .setRequestMetadata(req.build())
             .build()
     }
 
@@ -113,7 +140,7 @@ object PlayerConnection {
         withContext(Dispatchers.Main) {
             c.currentMediaItem?.let { savePosition(c) }
             val start = startIndex.coerceIn(0, items.lastIndex)
-            val startPos = positions.getLong(items[start].uri, 0L)
+            val startPos = positions.getLong(items[start].key, 0L)
             c.setMediaItems(items.map { it.toMediaItem() }, start, startPos)
             c.prepare()
             c.play()

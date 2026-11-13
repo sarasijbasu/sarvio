@@ -106,4 +106,11 @@ interface HistoryDao {
 
     @Query("DELETE FROM play_history")
     suspend fun clear()
+
+    /** Channels of videos recently streamed in Flow; seeds the on-device "For you" feed. */
+    @Query(
+        "SELECT artist FROM play_history WHERE uri LIKE 'http%' AND artist IS NOT NULL AND artist != '' " +
+            "GROUP BY artist ORDER BY MAX(lastPlayedAt) DESC LIMIT :limit"
+    )
+    suspend fun recentArtists(limit: Int): List<String>
 }
