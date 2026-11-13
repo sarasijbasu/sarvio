@@ -169,17 +169,44 @@ object Engine {
     ): StreamInfo = withContext(Dispatchers.IO) {
         check(awaitReady()) { "Download engine failed to start" }
         val h = maxHeight.coerceIn(144, 2160)
-        val r = baseRequest(context, url, cookieFile)
-        r.addOption("--dump-single-json")
-        r.addOption("--no-playlist")
-        r.addOption("--no-warnings")
-        r.addOption(
-            "-f",
-            if (audioOnly) "ba[ext=m4a]/ba[acodec^=mp4a]/ba/b"
-            else "bv*[height<=$h][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$h][vcodec^=avc1]+ba/bv*[height<=$h]+ba/b[height<=$h]/b"
+        // Preferred streams first, then anything playable at all, so a missing H.264/AAC/height
+        // never ends in "Requested format is not available".
+        val selector =
+            if (audioOnly) "ba[ext=m4a]/ba[acodec^=mp4a]/ba/b/ba*/b*"
+            else "bv*[height<=$h][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$h][vcodec^=avc1]+ba/" +
+                "bv*[height<=$h]+ba/b[height<=$h]/bv*+ba/b/bv*+ba*/b*"
+
+        // Some YouTube clients (especially with cookies) return almost no formats. When that
+        // happens, retry with other player clients, then without cookies.
+        val altClients = "youtube:player_client=default,tv,android_vr,web_safari,mweb"
+        val attempts = buildList<Pair<String?, String?>> {
+            add(cookieFile to null)
+            add(cookieFile to altClients)
+            if (cookieFile != null) add(null to altClients)
+        }
+        var found: JSONObject? = null
+        var lastError: Throwable? = null
+        for ((cookies, extractorArgs) in attempts) {
+            try {
+                val r = baseRequest(context, url, cookies)
+                r.addOption("--dump-single-json")
+                r.addOption("--no-playlist")
+                r.addOption("--no-warnings")
+                if (extractorArgs != null) r.addOption("--extractor-args", extractorArgs)
+                r.addOption("-f", selector)
+                val response = YoutubeDL.getInstance().execute(r)
+                found = JSONObject(response.out.trim().lineSequence().last { it.startsWith("{") })
+                break
+            } catch (t: Throwable) {
+                lastError = t
+                if (!isFormatError(t)) throw t
+                Log.w(TAG, "No usable format (cookies=${cookies != null}, args=$extractorArgs), retrying")
+            }
+        }
+        val json = found ?: throw IllegalStateException(
+            "No playable format for this video. Try Settings > Update engine, then play again.",
+            lastError,
         )
-        val response = YoutubeDL.getInstance().execute(r)
-        val json = JSONObject(response.out.trim().lineSequence().last { it.startsWith("{") })
 
         var media: String? = null
         var audio: String? = null
@@ -215,6 +242,13 @@ object Engine {
             userAgent = ua,
             audioOnly = audioOnly,
         )
+    }
+
+    private fun isFormatError(t: Throwable): Boolean {
+        val msg = generateSequence(t) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+        return msg.contains("Requested format is not available", true) ||
+            msg.contains("No video formats found", true) ||
+            msg.contains("Only images are available", true)
     }
 
     fun cancel(processId: String): Boolean =
@@ -283,7 +317,8 @@ object Engine {
                 r.addOption("--convert-thumbnails", "jpg")
             }
         } else {
-            r.addOption("-f", task.formatSpec)
+            // Broad tail so a quality that is no longer offered still downloads something.
+            r.addOption("-f", task.formatSpec + "/bv*+ba*/b*")
             // H.264 + AAC merge into MP4 by stream copy (no re-encode).
             r.addOption("-S", "vcodec:h264,res,acodec:m4a")
             r.addOption("--merge-output-format", "mp4")
