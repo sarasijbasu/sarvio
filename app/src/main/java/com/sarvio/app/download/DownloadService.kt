@@ -218,7 +218,7 @@ class DownloadService : Service() {
      */
     private suspend fun retryWithoutCookies(task: DownloadEntity, t: Throwable): Boolean {
         if (task.cookieFile == null || !Engine.isFormatError(t)) return false
-        if (dao.get(task.id)?.status != Status.RUNNING) return false
+        if (SarvioApp.instance.db.downloads().get(task.id)?.status != Status.RUNNING) return false
         Log.i(TAG, "No formats with cookies for ${task.id}, retrying without them")
         return true
     }
