@@ -88,16 +88,57 @@ object Engine {
         return r
     }
 
+    /**
+     * YouTube clients that work without a JavaScript runtime (Android has none). Newer yt-dlp
+     * only gets real formats from these when no JS runtime is present; neither accepts cookies,
+     * so signed-in requests (which use JS-only clients) can end with nothing but storyboards.
+     */
+    private const val JSLESS_CLIENTS = "youtube:player_client=default,visionos,android_vr"
+
+    /**
+     * Runs a --dump-single-json request and returns the JSON line. On "Requested format is not
+     * available" it retries with the JS-free clients, then without cookies.
+     */
+    private fun dumpJson(
+        context: Context,
+        url: String,
+        cookieFile: String?,
+        configure: (YoutubeDLRequest) -> Unit,
+    ): String {
+        val attempts = buildList<Pair<String?, String?>> {
+            add(cookieFile to null)
+            if (cookieFile != null) {
+                add(cookieFile to JSLESS_CLIENTS)
+                add(null to JSLESS_CLIENTS)
+            } else add(null to JSLESS_CLIENTS)
+        }
+        var lastError: Throwable? = null
+        for ((cookies, extractorArgs) in attempts) {
+            try {
+                val r = baseRequest(context, url, cookies)
+                r.addOption("--dump-single-json")
+                r.addOption("--no-warnings")
+                if (extractorArgs != null) r.addOption("--extractor-args", extractorArgs)
+                configure(r)
+                val response = YoutubeDL.getInstance().execute(r)
+                return response.out.trim().lineSequence().last { it.startsWith("{") }
+            } catch (t: Throwable) {
+                lastError = t
+                if (!isFormatError(t)) throw t
+                Log.w(TAG, "No usable format (cookies=${cookies != null}, args=$extractorArgs), retrying")
+            }
+        }
+        throw IllegalStateException(
+            "No playable format for this video. Try Settings > Update engine, then try again.",
+            lastError,
+        )
+    }
+
     /** Reads title, thumbnail, qualities and playlist entries without downloading. */
     suspend fun fetchInfo(context: Context, url: String, cookieFile: String?): MediaInfo =
         withContext(Dispatchers.IO) {
             check(awaitReady()) { "Download engine failed to start" }
-            val r = baseRequest(context, url, cookieFile)
-            r.addOption("--dump-single-json")
-            r.addOption("--flat-playlist")
-            r.addOption("--no-warnings")
-            val response = YoutubeDL.getInstance().execute(r)
-            val raw = response.out.trim().lineSequence().last { it.startsWith("{") }
+            val raw = dumpJson(context, url, cookieFile) { it.addOption("--flat-playlist") }
             val json = JSONObject(raw)
             val info = parseInfo(json, url)
             if (info.isPlaylist) info else info.copy(infoJsonPath = saveInfoJson(context, raw))
@@ -176,37 +217,10 @@ object Engine {
             else "bv*[height<=$h][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$h][vcodec^=avc1]+ba/" +
                 "bv*[height<=$h]+ba/b[height<=$h]/bv*+ba/b/bv*+ba*/b*"
 
-        // Some YouTube clients (especially with cookies) return almost no formats. When that
-        // happens, retry with other player clients, then without cookies.
-        val altClients = "youtube:player_client=default,tv,android_vr,web_safari,mweb"
-        val attempts = buildList<Pair<String?, String?>> {
-            add(cookieFile to null)
-            add(cookieFile to altClients)
-            if (cookieFile != null) add(null to altClients)
-        }
-        var found: JSONObject? = null
-        var lastError: Throwable? = null
-        for ((cookies, extractorArgs) in attempts) {
-            try {
-                val r = baseRequest(context, url, cookies)
-                r.addOption("--dump-single-json")
-                r.addOption("--no-playlist")
-                r.addOption("--no-warnings")
-                if (extractorArgs != null) r.addOption("--extractor-args", extractorArgs)
-                r.addOption("-f", selector)
-                val response = YoutubeDL.getInstance().execute(r)
-                found = JSONObject(response.out.trim().lineSequence().last { it.startsWith("{") })
-                break
-            } catch (t: Throwable) {
-                lastError = t
-                if (!isFormatError(t)) throw t
-                Log.w(TAG, "No usable format (cookies=${cookies != null}, args=$extractorArgs), retrying")
-            }
-        }
-        val json = found ?: throw IllegalStateException(
-            "No playable format for this video. Try Settings > Update engine, then play again.",
-            lastError,
-        )
+        val json = JSONObject(dumpJson(context, url, cookieFile) { r ->
+            r.addOption("--no-playlist")
+            r.addOption("-f", selector)
+        })
 
         var media: String? = null
         var audio: String? = null
@@ -244,7 +258,7 @@ object Engine {
         )
     }
 
-    private fun isFormatError(t: Throwable): Boolean {
+    fun isFormatError(t: Throwable): Boolean {
         val msg = generateSequence(t) { it.cause }.joinToString(" ") { it.message.orEmpty() }
         return msg.contains("Requested format is not available", true) ||
             msg.contains("No video formats found", true) ||
@@ -273,18 +287,22 @@ object Engine {
         outDir: File,
         processId: String,
         useInfoJson: Boolean = true,
+        withCookies: Boolean = true,
         onProgress: (Float, Long, String) -> Unit,
     ): String {
         val info = if (useInfoJson) usableInfoJson(task.infoJson) else null
+        val cookieFile = task.cookieFile.takeIf { withCookies }
         val r = if (info != null) {
             YoutubeDLRequest(emptyList<String>()).also { req ->
                 req.addOption("--load-info-json", info.absolutePath)
                 req.addOption("--cache-dir", File(context.cacheDir, "yt-dlp").apply { mkdirs() }.absolutePath)
                 req.addOption("--no-check-certificates")
                 req.addOption("--socket-timeout", "20")
-                task.cookieFile?.takeIf { File(it).exists() }?.let { req.addOption("--cookies", it) }
+                cookieFile?.takeIf { File(it).exists() }?.let { req.addOption("--cookies", it) }
             }
-        } else baseRequest(context, task.url, task.cookieFile)
+        } else baseRequest(context, task.url, cookieFile).also {
+            it.addOption("--extractor-args", JSLESS_CLIENTS)
+        }
         r.addOption("--no-mtime")
         r.addOption("--newline")
         r.addOption("--continue")

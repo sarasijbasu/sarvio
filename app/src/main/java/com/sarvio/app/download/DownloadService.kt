@@ -167,9 +167,21 @@ class DownloadService : Service() {
                 throw e
             } catch (t: Throwable) {
                 // The saved page may be stale; fall back to a normal fetch once.
-                if (!usedInfo || dao.get(task.id)?.status != Status.RUNNING) throw t
-                Log.i(TAG, "Saved info failed for ${task.id}, retrying with the link", t)
-                Engine.download(this, task, settings, outDir, task.id.toString(), useInfoJson = false, onProgress = onProgress)
+                if (dao.get(task.id)?.status != Status.RUNNING) throw t
+                if (usedInfo) {
+                    Log.i(TAG, "Saved info failed for ${task.id}, retrying with the link", t)
+                    try {
+                        Engine.download(this, task, settings, outDir, task.id.toString(), useInfoJson = false, onProgress = onProgress)
+                    } catch (e: YoutubeDL.CanceledException) {
+                        throw e
+                    } catch (t2: Throwable) {
+                        if (!retryWithoutCookies(task, t2)) throw t2
+                        Engine.download(this, task, settings, outDir, task.id.toString(), useInfoJson = false, withCookies = false, onProgress = onProgress)
+                    }
+                } else {
+                    if (!retryWithoutCookies(task, t)) throw t
+                    Engine.download(this, task, settings, outDir, task.id.toString(), useInfoJson = false, withCookies = false, onProgress = onProgress)
+                }
             }
             val file = Engine.locateOutput(out, outDir, task.mediaId, startedAt)
                 ?: throw IllegalStateException("Finished, but the output file was not found")
@@ -198,6 +210,17 @@ class DownloadService : Service() {
             jobs.remove(task.id)
             progressText.remove(task.id)
         }
+    }
+
+    /**
+     * Signed-in YouTube requests only use clients that need a JavaScript runtime, which the phone
+     * lacks, so they can return no formats. Then one more try without cookies is worth it.
+     */
+    private suspend fun retryWithoutCookies(task: DownloadEntity, t: Throwable): Boolean {
+        if (task.cookieFile == null || !Engine.isFormatError(t)) return false
+        if (dao.get(task.id)?.status != Status.RUNNING) return false
+        Log.i(TAG, "No formats with cookies for ${task.id}, retrying without them")
+        return true
     }
 
     private fun cleanError(raw: String?): String {
